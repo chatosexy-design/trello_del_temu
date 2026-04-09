@@ -16,6 +16,8 @@ import UserNode from '../components/UserNode';
 import TaskModal from '../components/TaskModal';
 import TaskViewModal from '../components/TaskViewModal';
 
+import UserTasksModal from '../components/UserTasksModal';
+
 const nodeTypes = {
   userNode: UserNode,
 };
@@ -33,6 +35,8 @@ const WorkspaceDetail = () => {
   // Modal states
   const [selectedUserForTask, setSelectedUserForTask] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedUserTasks, setSelectedUserTasks] = useState(null);
+  const [currentUserForTasks, setCurrentUserForTasks] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -76,7 +80,11 @@ const WorkspaceDetail = () => {
         user: member, 
         tasks: tasks.filter(t => t.assignedTo._id === member._id),
         onAddTask: (u) => setSelectedUserForTask(u),
-        onShowTask: (t) => setSelectedTask(t)
+        onShowTask: (t) => setSelectedTask(t),
+        onShowUserTasks: (u, tks) => {
+          setCurrentUserForTasks(u);
+          setSelectedUserTasks(tks);
+        }
       },
     }));
 
@@ -223,6 +231,21 @@ const WorkspaceDetail = () => {
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
         onUpdate={fetchData}
+      />
+
+      <UserTasksModal 
+        isOpen={!!currentUserForTasks}
+        onClose={() => {
+          setCurrentUserForTasks(null);
+          setSelectedUserTasks(null);
+        }}
+        user={currentUserForTasks}
+        tasks={selectedUserTasks || []}
+        onShowTask={(task) => {
+          setCurrentUserForTasks(null);
+          setSelectedUserTasks(null);
+          setSelectedTask(task);
+        }}
       />
     </div>
   );
