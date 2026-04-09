@@ -1,8 +1,33 @@
-import React from 'react';
-import { Download, FileText, Image as ImageIcon, File, Calendar, Clock, User as UserIcon, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { Download, FileText, Image as ImageIcon, File, Calendar, Clock, User as UserIcon, Users, CheckCircle2, AlertCircle } from 'lucide-react';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
-const TaskViewModal = ({ isOpen, onClose, task }) => {
+const TaskViewModal = ({ isOpen, onClose, task, onUpdate }) => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   if (!isOpen || !task) return null;
+
+  const handleStatusChange = async (newStatus) => {
+    setError('');
+    setLoading(true);
+    try {
+      const token = await user.getIdToken();
+      await axios.patch(`${import.meta.env.VITE_API_URL}/api/tasks/${task._id}/status`, 
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error('Error updating status:', err);
+      setError(err.response?.data?.message || 'Error al actualizar el estado');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getFileIcon = (type) => {
     if (type.includes('image')) return <ImageIcon size={20} className="text-blue-500" />;
@@ -35,6 +60,13 @@ const TaskViewModal = ({ isOpen, onClose, task }) => {
         </div>
 
         <div className="p-8 space-y-8 overflow-y-auto max-h-[80vh]">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+              <AlertCircle size={20} />
+              <p className="font-semibold text-sm">{error}</p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Descripción</label>
             <p className="text-slate-700 leading-relaxed text-lg whitespace-pre-wrap">{task.description}</p>
@@ -81,6 +113,24 @@ const TaskViewModal = ({ isOpen, onClose, task }) => {
                   )) : (
                     <p className="text-xs text-slate-400 italic">Sin colaboradores adicionales</p>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <Clock size={14} /> Cambiar Estado
+                </label>
+                <div className="flex gap-2">
+                  {['pendiente', 'en progreso', 'terminado'].filter(s => s !== task.status).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(s)}
+                      disabled={loading}
+                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:border-primary hover:text-primary transition-all disabled:opacity-50 capitalize"
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

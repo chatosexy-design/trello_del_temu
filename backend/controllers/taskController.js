@@ -5,15 +5,20 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const createTask = async (req, res) => {
   const { title, description, startDate, endDate, status, assignedTo, collaborators, workspace } = req.body;
-  const files = req.files;
+  const files = req.files || [];
 
-  if (!title || !description || !files || files.length === 0) {
-    return res.status(400).json({ message: 'Título, descripción y al menos una evidencia son obligatorios' });
+  if (!title || !description) {
+    return res.status(400).json({ message: 'Título y descripción son obligatorios' });
+  }
+
+  // VALIDACIÓN: Si el estado es 'terminado', debe tener al menos un archivo
+  if (status === 'terminado' && files.length === 0) {
+    return res.status(400).json({ message: 'No puedes marcar la tarea como terminada sin subir al menos una evidencia' });
   }
 
   try {
     const bucket = adminStorage.bucket();
-    const uploadedFiles = await Promise.all(
+    const uploadedFiles = files.length > 0 ? await Promise.all(
       files.map(async (file) => {
         const fileName = `${uuidv4()}_${file.originalname}`;
         const fileUpload = bucket.file(`evidences/${fileName}`);
@@ -22,8 +27,6 @@ export const createTask = async (req, res) => {
           metadata: { contentType: file.mimetype },
         });
 
-        // Make file public or get a signed URL (for simplicity, we'll use a public-like approach or signed URL)
-        // For this demo, we'll just get a signed URL valid for a long time
         const [url] = await fileUpload.getSignedUrl({
           action: 'read',
           expires: '03-09-2491', // Long term
@@ -35,7 +38,7 @@ export const createTask = async (req, res) => {
           type: file.mimetype,
         };
       })
-    );
+    ) : [];
 
     const task = await Task.create({
       title,
@@ -99,7 +102,18 @@ export const getWorkspaceRelations = async (req, res) => {
 export const updateTaskStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+
   try {
+    // Si se intenta marcar como terminado, verificar evidencias
+    if (status === 'terminado') {
+      const task = await Task.findById(id);
+      if (!task) return res.status(404).json({ message: 'Tarea no encontrada' });
+      
+      if (task.files.length === 0) {
+        return res.status(400).json({ message: 'No puedes marcar la tarea como terminada sin subir al menos una evidencia' });
+      }
+    }
+
     const task = await Task.findByIdAndUpdate(id, { status }, { new: true });
     res.status(200).json(task);
   } catch (error) {

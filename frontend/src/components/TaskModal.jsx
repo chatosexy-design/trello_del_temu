@@ -38,7 +38,11 @@ const TaskModal = ({ isOpen, onClose, assignedTo, workspaceId, onSuccess, member
 
     if (!title) return setError('El título es obligatorio');
     if (!description) return setError('La descripción es obligatoria');
-    if (files.length === 0) return setError('Debes subir al menos una evidencia');
+    
+    // Solo validar archivos si el estado es 'terminado'
+    if (status === 'terminado' && files.length === 0) {
+      return setError('No puedes marcar la tarea como terminada sin subir al menos una evidencia');
+    }
 
     setLoading(true);
     const formData = new FormData();
@@ -193,10 +197,10 @@ const TaskModal = ({ isOpen, onClose, assignedTo, workspaceId, onSuccess, member
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">Subir Evidencia *</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">Subir Evidencia {status === 'terminado' ? '*' : '(Opcional ahora)'}</label>
               <div 
                 className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer
-                  ${files.length > 0 ? 'border-primary bg-blue-50/30' : 'border-slate-200 hover:border-primary hover:bg-slate-50'}`}
+                  ${files.length > 0 ? 'border-primary bg-blue-50/30' : status === 'terminado' ? 'border-red-200 bg-red-50/10 hover:border-red-400' : 'border-slate-200 hover:border-primary hover:bg-slate-50'}`}
                 onClick={() => document.getElementById('fileInput').click()}
               >
                 <input 

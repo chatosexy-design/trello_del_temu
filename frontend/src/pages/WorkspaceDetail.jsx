@@ -222,6 +222,7 @@ const WorkspaceDetail = () => {
         isOpen={!!selectedTask}
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
+        onUpdate={fetchData}
       />
     </div>
   );
