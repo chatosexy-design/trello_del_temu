@@ -6,7 +6,11 @@ dotenv.config();
 const serviceAccount = {
   projectId: process.env.FIREBASE_PROJECT_ID?.replace(/"/g, ''),
   clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.replace(/"/g, ''),
-  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/"/g, '')?.replace(/\\n/g, '\n'),
+  // Esta línea limpia comillas, espacios y asegura que los saltos de línea \n se interpreten bien en Vercel
+  privateKey: process.env.FIREBASE_PRIVATE_KEY
+    ?.replace(/"/g, '')
+    ?.replace(/\\n/g, '\n')
+    ?.trim(),
 };
 
 if (!admin.apps.length) {

@@ -9,12 +9,15 @@ export const verifyToken = async (req, res, next) => {
   }
 
   try {
+    console.log("[Auth Middleware] Verificando token...");
     const decodedToken = await adminAuth.verifyIdToken(token);
     const { uid, email, name, picture } = decodedToken;
+    console.log("[Auth Middleware] Token válido para:", email);
 
     // Find or create user in MongoDB
     let user = await User.findOne({ uid });
     if (!user) {
+      console.log("[Auth Middleware] Creando nuevo usuario en MongoDB:", email);
       user = await User.create({
         uid,
         email,
@@ -26,7 +29,11 @@ export const verifyToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('Error verifying token:', error);
-    res.status(403).json({ message: 'Unauthorized' });
+    console.error('[Auth Middleware] ERROR DE VERIFICACIÓN:', error.code, error.message);
+    res.status(403).json({ 
+      message: 'Unauthorized', 
+      error: error.message,
+      code: error.code 
+    });
   }
 };
