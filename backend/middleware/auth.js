@@ -5,11 +5,12 @@ export const verifyToken = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
+    console.error("[Auth Middleware] No se recibió token en los headers");
     return res.status(401).json({ message: 'No token provided' });
   }
 
   try {
-    console.log("[Auth Middleware] Verificando token...");
+    console.log("[Auth Middleware] Verificando token de Firebase...");
     const decodedToken = await adminAuth.verifyIdToken(token);
     const { uid, email, name, picture } = decodedToken;
     console.log("[Auth Middleware] Token válido para:", email);
