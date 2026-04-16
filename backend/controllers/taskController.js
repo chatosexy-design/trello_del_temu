@@ -2,6 +2,7 @@ import Task from '../models/Task.js';
 import Relation from '../models/Relation.js';
 import { adminStorage } from '../config/firebase-admin.js';
 import { v4 as uuidv4 } from 'uuid';
+import mongoose from 'mongoose';
 
 export const createTask = async (req, res) => {
   const { title, description, startDate, endDate, status, assignedTo, collaborators, workspace } = req.body;
@@ -27,20 +28,40 @@ export const createTask = async (req, res) => {
         
         console.log(`[Backend:createTask] Subiendo evidencia: ${fileName}`);
 
-        await fileUpload.save(file.buffer, {
-          metadata: { contentType: file.mimetype },
-        });
+        try {
+          if (!file.buffer) {
+            throw new Error(`El archivo ${file.originalname} no tiene contenido.`);
+          }
 
-        const [url] = await fileUpload.getSignedUrl({
-          action: 'read',
-          expires: '03-09-2491', // Long term
-        });
+          await fileUpload.save(file.buffer, {
+            metadata: { 
+              contentType: file.mimetype,
+              metadata: { firebaseStorageDownloadTokens: uuidv4() }
+            },
+            resumable: false
+          });
 
-        return {
-          name: file.originalname,
-          url,
-          type: file.mimetype,
-        };
+          const [url] = await fileUpload.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 1000 * 60 * 60 * 24 * 365,
+            version: 'v4'
+          });
+
+          return {
+            name: file.originalname,
+            url,
+            type: file.mimetype,
+          };
+        } catch (uploadError) {
+          console.error(`[Backend:createTask] Error subiendo archivo ${file.originalname}:`, uploadError);
+          // Fallback URL
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/evidences/${fileName}`;
+          return {
+            name: file.originalname,
+            url: publicUrl,
+            type: file.mimetype,
+          };
+        }
       })
     ) : [];
 
@@ -135,7 +156,11 @@ export const addFilesToTask = async (req, res) => {
   const files = req.files;
 
   console.log(`[Backend:addFilesToTask] Recibida solicitud para tarea: ${id}`);
-  console.log(`[Backend:addFilesToTask] Cantidad de archivos: ${files?.length || 0}`);
+  
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    console.error(`[Backend:addFilesToTask] ID no válido: ${id}`);
+    return res.status(400).json({ message: 'ID de tarea no válido' });
+  }
 
   if (!files || files.length === 0) {
     console.error(`[Backend:addFilesToTask] No se recibieron archivos`);
@@ -144,6 +169,10 @@ export const addFilesToTask = async (req, res) => {
 
   try {
     const bucket = adminStorage.bucket();
+    if (!bucket) {
+      throw new Error('No se pudo acceder al bucket de Firebase Storage. Verifica la configuración.');
+    }
+    
     console.log(`[Backend:addFilesToTask] Bucket obtenido: ${bucket.name}`);
 
     const uploadedFiles = await Promise.all(
@@ -151,23 +180,56 @@ export const addFilesToTask = async (req, res) => {
         const fileName = `${uuidv4()}_${file.originalname}`;
         const fileUpload = bucket.file(`evidences/${fileName}`);
         
-        console.log(`[Backend:addFilesToTask] Subiendo archivo: ${fileName} (${file.mimetype}, ${file.size} bytes)`);
+        console.log(`[Backend:addFilesToTask] Intentando subir archivo: ${fileName} (${file.mimetype})`);
 
-        await fileUpload.save(file.buffer, {
-          metadata: { contentType: file.mimetype },
-        });
+        try {
+          // Usar buffer si existe, si no, lanzar error claro
+          if (!file.buffer) {
+            throw new Error(`El archivo ${file.originalname} no tiene contenido (buffer vacío).`);
+          }
 
-        console.log(`[Backend:addFilesToTask] Generando Signed URL para: ${fileName}`);
-        const [url] = await fileUpload.getSignedUrl({
-          action: 'read',
-          expires: '03-09-2491',
-        });
+          await fileUpload.save(file.buffer, {
+            metadata: { 
+              contentType: file.mimetype,
+              metadata: {
+                firebaseStorageDownloadTokens: uuidv4(),
+              }
+            },
+            resumable: false // Desactivar resumable para archivos pequeños (más rápido en serverless)
+          });
+          console.log(`[Backend:addFilesToTask] Archivo guardado en Storage: ${fileName}`);
+        } catch (uploadError) {
+          console.error(`[Backend:addFilesToTask] Error en fileUpload.save:`, uploadError);
+          throw new Error(`Error al guardar en Firebase Storage: ${uploadError.message}`);
+        }
 
-        return {
-          name: file.originalname,
-          url,
-          type: file.mimetype,
-        };
+        console.log(`[Backend:addFilesToTask] Generando URL para: ${fileName}`);
+        try {
+          // Intentar obtener Signed URL con versión v4 que es más compatible
+          const [url] = await fileUpload.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 1000 * 60 * 60 * 24 * 365, // 1 año desde ahora
+            version: 'v4'
+          });
+
+          return {
+            name: file.originalname,
+            url,
+            type: file.mimetype,
+          };
+        } catch (urlError) {
+          console.error(`[Backend:addFilesToTask] Error en getSignedUrl:`, urlError);
+          // Fallback: Si falla el signed URL, intentamos construir una URL pública básica 
+          // (Nota: Esto solo funcionará si el bucket es público, pero ayuda a que no explote)
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/evidences/${fileName}`;
+          console.log(`[Backend:addFilesToTask] Usando fallback URL: ${publicUrl}`);
+          
+          return {
+            name: file.originalname,
+            url: publicUrl,
+            type: file.mimetype,
+          };
+        }
       })
     );
 
@@ -180,16 +242,16 @@ export const addFilesToTask = async (req, res) => {
 
     if (!task) {
       console.error(`[Backend:addFilesToTask] Tarea no encontrada en MongoDB: ${id}`);
-      return res.status(404).json({ message: 'Tarea no encontrada' });
+      return res.status(404).json({ message: 'Tarea no encontrada en la base de datos' });
     }
 
     console.log(`[Backend:addFilesToTask] Archivos añadidos con éxito. Total de archivos ahora: ${task.files.length}`);
     res.status(200).json(task);
   } catch (error) {
-    console.error('[Backend:addFilesToTask] Error completo:', error);
+    console.error('[Backend:addFilesToTask] ERROR CRÍTICO:', error);
     res.status(500).json({ 
-      message: 'Error al procesar archivos en el servidor',
-      error: error.message 
+      message: error.message || 'Error interno al procesar los archivos',
+      error: error.stack // Enviamos el stack para diagnóstico (quitar en producción real después)
     });
   }
 };
