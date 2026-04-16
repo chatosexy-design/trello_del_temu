@@ -40,7 +40,11 @@ const TaskViewModal = ({ isOpen, onClose, task, onUpdate }) => {
       onUpdate();
     } catch (err) {
       console.error('Error uploading files:', err);
-      setError('Error al subir archivos');
+      if (err.response?.status === 413) {
+        setError('Los archivos son demasiado grandes para Vercel (máx. 4.5MB en total)');
+      } else {
+        setError(err.response?.data?.message || 'Error al subir archivos. Intenta con un archivo más pequeño.');
+      }
     } finally {
       setUploadingFiles(false);
     }

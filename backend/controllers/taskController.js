@@ -7,6 +7,8 @@ export const createTask = async (req, res) => {
   const { title, description, startDate, endDate, status, assignedTo, collaborators, workspace } = req.body;
   const files = req.files || [];
 
+  console.log(`[Backend:createTask] Creando tarea: ${title}`);
+
   if (!title || !description) {
     return res.status(400).json({ message: 'Título y descripción son obligatorios' });
   }
@@ -23,6 +25,8 @@ export const createTask = async (req, res) => {
         const fileName = `${uuidv4()}_${file.originalname}`;
         const fileUpload = bucket.file(`evidences/${fileName}`);
         
+        console.log(`[Backend:createTask] Subiendo evidencia: ${fileName}`);
+
         await fileUpload.save(file.buffer, {
           metadata: { contentType: file.mimetype },
         });
@@ -68,10 +72,14 @@ export const createTask = async (req, res) => {
       );
     }
 
+    console.log(`[Backend:createTask] Tarea creada con éxito: ${task._id}`);
     res.status(201).json(task);
   } catch (error) {
-    console.error('Error creating task:', error);
-    res.status(500).json({ message: 'Error creating task' });
+    console.error('[Backend:createTask] Error:', error);
+    res.status(500).json({ 
+      message: 'Error al crear la tarea',
+      error: error.message 
+    });
   }
 };
 
@@ -126,21 +134,30 @@ export const addFilesToTask = async (req, res) => {
   const { id } = req.params;
   const files = req.files;
 
+  console.log(`[Backend:addFilesToTask] Recibida solicitud para tarea: ${id}`);
+  console.log(`[Backend:addFilesToTask] Cantidad de archivos: ${files?.length || 0}`);
+
   if (!files || files.length === 0) {
-    return res.status(400).json({ message: 'No se subieron archivos' });
+    console.error(`[Backend:addFilesToTask] No se recibieron archivos`);
+    return res.status(400).json({ message: 'No se recibieron archivos en la petición' });
   }
 
   try {
     const bucket = adminStorage.bucket();
+    console.log(`[Backend:addFilesToTask] Bucket obtenido: ${bucket.name}`);
+
     const uploadedFiles = await Promise.all(
       files.map(async (file) => {
         const fileName = `${uuidv4()}_${file.originalname}`;
         const fileUpload = bucket.file(`evidences/${fileName}`);
         
+        console.log(`[Backend:addFilesToTask] Subiendo archivo: ${fileName} (${file.mimetype}, ${file.size} bytes)`);
+
         await fileUpload.save(file.buffer, {
           metadata: { contentType: file.mimetype },
         });
 
+        console.log(`[Backend:addFilesToTask] Generando Signed URL para: ${fileName}`);
         const [url] = await fileUpload.getSignedUrl({
           action: 'read',
           expires: '03-09-2491',
@@ -154,15 +171,25 @@ export const addFilesToTask = async (req, res) => {
       })
     );
 
+    console.log(`[Backend:addFilesToTask] Actualizando MongoDB para la tarea: ${id}`);
     const task = await Task.findByIdAndUpdate(
       id, 
       { $push: { files: { $each: uploadedFiles } } },
       { new: true }
     );
 
+    if (!task) {
+      console.error(`[Backend:addFilesToTask] Tarea no encontrada en MongoDB: ${id}`);
+      return res.status(404).json({ message: 'Tarea no encontrada' });
+    }
+
+    console.log(`[Backend:addFilesToTask] Archivos añadidos con éxito. Total de archivos ahora: ${task.files.length}`);
     res.status(200).json(task);
   } catch (error) {
-    console.error('Error adding files to task:', error);
-    res.status(500).json({ message: 'Error adding files to task' });
+    console.error('[Backend:addFilesToTask] Error completo:', error);
+    res.status(500).json({ 
+      message: 'Error al procesar archivos en el servidor',
+      error: error.message 
+    });
   }
 };
