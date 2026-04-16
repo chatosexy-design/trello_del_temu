@@ -121,3 +121,48 @@ export const updateTaskStatus = async (req, res) => {
     res.status(500).json({ message: 'Error updating task status' });
   }
 };
+
+export const addFilesToTask = async (req, res) => {
+  const { id } = req.params;
+  const files = req.files;
+
+  if (!files || files.length === 0) {
+    return res.status(400).json({ message: 'No se subieron archivos' });
+  }
+
+  try {
+    const bucket = adminStorage.bucket();
+    const uploadedFiles = await Promise.all(
+      files.map(async (file) => {
+        const fileName = `${uuidv4()}_${file.originalname}`;
+        const fileUpload = bucket.file(`evidences/${fileName}`);
+        
+        await fileUpload.save(file.buffer, {
+          metadata: { contentType: file.mimetype },
+        });
+
+        const [url] = await fileUpload.getSignedUrl({
+          action: 'read',
+          expires: '03-09-2491',
+        });
+
+        return {
+          name: file.originalname,
+          url,
+          type: file.mimetype,
+        };
+      })
+    );
+
+    const task = await Task.findByIdAndUpdate(
+      id, 
+      { $push: { files: { $each: uploadedFiles } } },
+      { new: true }
+    );
+
+    res.status(200).json(task);
+  } catch (error) {
+    console.error('Error adding files to task:', error);
+    res.status(500).json({ message: 'Error adding files to task' });
+  }
+};

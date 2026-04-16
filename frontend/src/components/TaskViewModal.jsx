@@ -7,8 +7,44 @@ const TaskViewModal = ({ isOpen, onClose, task, onUpdate }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   if (!isOpen || !task) return null;
+
+  const handleFileUpload = async (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    setUploadProgress(0);
+    setError('');
+
+    const formData = new FormData();
+    selectedFiles.forEach(file => {
+      formData.append('files', file);
+    });
+
+    try {
+      const token = await user.getIdToken();
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/tasks/${task._id}/files`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(progress);
+        }
+      });
+      onUpdate();
+    } catch (err) {
+      console.error('Error uploading files:', err);
+      setError('Error al subir archivos');
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus) => {
     setError('');
@@ -137,9 +173,42 @@ const TaskViewModal = ({ isOpen, onClose, task, onUpdate }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Clock size={14} /> Evidencias Adjuntas ({task.files.length})
-            </label>
+            <div className="flex justify-between items-center mb-4">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Clock size={14} /> Evidencias Adjuntas ({task.files.length})
+              </label>
+              <button 
+                onClick={() => document.getElementById('addFileInput').click()}
+                disabled={uploadingFiles}
+                className="text-xs font-bold text-primary hover:text-blue-700 flex items-center gap-1 transition-colors disabled:opacity-50"
+              >
+                <ImageIcon size={14} />
+                <span>+ Añadir Evidencia</span>
+              </button>
+              <input 
+                id="addFileInput"
+                type="file" 
+                multiple 
+                className="hidden" 
+                onChange={handleFileUpload}
+              />
+            </div>
+
+            {uploadingFiles && (
+              <div className="mb-4">
+                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                  <span>Subiendo archivos...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-primary h-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-3">
               {task.files.map((file, index) => (
                 <div key={index} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-md transition-all group">
